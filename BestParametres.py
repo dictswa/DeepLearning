@@ -287,4 +287,130 @@ print(f"Best Validation Accuracy: {history['val_acc'][best_epoch - 1]:.2f}%")
 save_path = "catdogs_final_cnn.pth"
 torch.save(model.state_dict(), save_path)
 
+# Visualizing training results
+
+epochs_range = range(1, len(history['train_loss']) + 1)
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+# Training and validation loss
+ax1.plot(epochs_range, history['train_loss'], label='Training Loss')
+ax1.plot(epochs_range, history['val_loss'], label='Validation Loss')
+
+ax1.set_xlabel('Epoch')
+ax1.set_ylabel('Cross-Entropy Loss')
+ax1.set_title('Training and Validation Loss')
+ax1.legend()
+
+# Training and validation accuracy
+ax2.plot(epochs_range, history['train_acc'], label='Training Accuracy')
+ax2.plot(epochs_range, history['val_acc'], label='Validation Accuracy')
+
+ax2.set_xlabel('Epoch')
+ax2.set_ylabel('Accuracy (%)')
+ax2.set_title('Training and Validation Accuracy')
+ax2.legend()
+
+plt.tight_layout()
+plt.savefig('training_validation.png')
+plt.show()
+
+# Final test evaluation
+
+model.eval()
+correct_test = 0
+total_test = 0
+running_test_loss = 0.0
+
+all_labels = []
+all_preds = []
+
+with torch.no_grad():
+    for images, labels in test_loader:
+        images, labels = images.to(device), labels.to(device)
+
+        outputs = model(images)
+        loss = criterion(outputs, labels)
+        preds = outputs.argmax(dim=1)
+
+        running_test_loss += loss.item() * images.size(0)
+        correct_test += (preds == labels).sum().item()
+        total_test += labels.size(0)
+
+        all_labels.extend(labels.cpu().numpy())
+        all_preds.extend(preds.cpu().numpy())
+
+test_loss = running_test_loss / total_test
+test_acc = (correct_test / total_test) * 100.0
+
+print(f"Final Test Loss: {test_loss:.4f}")
+print(f"Final Test Accuracy: {test_acc:.2f}%")
+
+
+# Visualizing misclassified images
+
+model.eval()
+
+misclassified_samples = []
+
+with torch.no_grad():
+    for images, labels in test_loader:
+        images_dev = images.to(device)
+        outputs = model(images_dev)
+        probs = F.softmax(outputs, dim=1)
+        preds = outputs.argmax(dim=1)
+
+        for img, true_lbl, pred_lbl, prob in zip(images, labels, preds.cpu(), probs.cpu()):
+            if pred_lbl != true_lbl:
+                misclassified_samples.append({
+                    'image': img,
+                    'true_label': true_lbl.item(),
+                    'pred_label': pred_lbl.item(),
+                    'pred_conf': prob[pred_lbl].item() * 100.0,
+                    'true_conf': prob[true_lbl].item() * 100.0
+                })
+
+total_test = len(test_ds)
+num_errors = len(misclassified_samples)
+accuracy = 100.0 * (total_test - num_errors) / total_test
+
+print(f"Total test samples       : {total_test}")
+print(f"Total misclassifications : {num_errors}")
+print(f"Test Accuracy            : {accuracy:.2f}%")
+
+# Plot 10 misclassified examples
+num_display = min(10, num_errors)
+fig, axes = plt.subplots(2, 5, figsize=(16, 8))
+axes = axes.flatten()
+
+for idx in range(num_display):
+    sample = misclassified_samples[idx]
+    ax = axes[idx]
+
+    ax.imshow(sample['image'].permute(1, 2, 0))
+    ax.set_title(
+        f"True: {dataset.classes[sample['true_label']]} | "
+        f"Pred: {dataset.classes[sample['pred_label']]}\n"
+        f"Pred Conf: {sample['pred_conf']:.1f}%\n"
+        f"True Conf: {sample['true_conf']:.1f}%",
+        fontsize=10,
+        color='darkred'
+    )
+    ax.axis('off')
+
+# Turn off unused axes
+for idx in range(num_display, len(axes)):
+    axes[idx].axis('off')
+
+plt.suptitle(
+    f"Sample Incorrectly Labelled Test Data Points ({num_errors} total errors)",
+    fontsize=14,
+    fontweight='bold',
+    y=0.98
+)
+
+plt.tight_layout()
+plt.savefig("misclassified_images.png")
+plt.show()
+
 
